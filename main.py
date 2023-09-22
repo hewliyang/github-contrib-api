@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
-from github import Client, ContributionsRequestParams
+from github import Client, Contributions, ContributionsRequestParams
 
 client = Client()
 app = FastAPI()
@@ -12,5 +12,5 @@ async def root():
 
 
 @app.post("/contributions")
-async def fetch_contributions(params: ContributionsRequestParams):
+async def fetch_contributions(params: ContributionsRequestParams) -> Contributions:
     return client.fetch_contributions(params)

@@ -3,7 +3,7 @@ import requests
 
 from dotenv import load_dotenv
 from inspect import cleandoc
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from pydantic import BaseModel, Field, SecretStr, model_validator
@@ -38,20 +38,50 @@ class APIError(Exception):
     pass
 
 
+# input schema
 class ContributionsRequestParams(BaseModel):
     username: str = Field(default="hewliyang")
-    # for some reason the GitHub profile heatmap displays data for 1 year + 1 week ago
-    from_date: Optional[datetime] = datetime.now() - relativedelta(years=1, weeks=1)
-    to_date: Optional[datetime] = datetime.now()
+    from_date: Optional[datetime] = Field(
+        default=datetime.now() - relativedelta(years=1, weeks=1)
+    )
+    to_date: Optional[datetime] = Field(default=datetime.now())
 
     @model_validator(mode="before")
     def validate_dates(cls, values):
         from_date = values.get("from_date")
         to_date = values.get("to_date")
 
+        if not from_date or not to_date:
+            return values
         if from_date > to_date:
             raise ValueError("from_date must be earlier than to_date!")
         return values
+
+
+# output schemas
+
+
+class DailyRecord(BaseModel):
+    contributionCount: int = Field(...)
+    date: str = Field(...)
+
+
+class Contributions(BaseModel):
+    total: int = Field(...)
+    contributions: List[DailyRecord] = Field(...)
+
+
+def _flatten(resp: dict) -> dict:
+    blob = resp["data"]["user"]["contributionsCollection"]["contributionCalendar"]
+    total_contribs = blob["totalContributions"]
+    weeks = blob["weeks"]
+
+    return {
+        "total": total_contribs,
+        "contributions": [
+            record for week in weeks for record in week["contributionDays"]
+        ],
+    }
 
 
 class Client:
@@ -60,7 +90,7 @@ class Client:
     ):
         self.github_api_key = github_api_key
 
-    def fetch_contributions(self, params: ContributionsRequestParams) -> dict:
+    def fetch_contributions(self, params: ContributionsRequestParams) -> Contributions:
         resp = requests.post(
             ENDPOINT,
             json={
@@ -75,6 +105,6 @@ class Client:
         )
 
         if resp.status_code == 200:
-            return resp.json()
+            return Contributions(**_flatten(resp.json()))
         else:
             raise APIError(f"Request failed with error: {resp.status_code}") from None
